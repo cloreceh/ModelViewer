@@ -97,6 +97,12 @@ SNOW_IN = [0.1, 1, 2, 3, 4, 6, 8, 12, 18, 24, 36, 48]
 SNOW_COLORS = ['#a3c4e0', '#6baed6', '#3182bd', '#08519c', '#082694', '#f2e65c',
                '#ffc400', '#ff8700', '#db1400', '#9e0000', '#690000', '#8a3fd1']
 SNOW_CM = [0.5, 2.5, 5, 7.5, 10, 15, 20, 30, 45, 60, 90, 120]
+# Hourly snowfall (shown until totals are summed in the app): same NWS-style
+# colors, steps sized for one hour.
+SNOW_HOURLY_IN = [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3]
+SNOW_HOURLY_CM = [0.25, 0.5, 1, 2, 3, 4, 5, 7.5]
+SNOW_HOURLY_COLORS = ['#a3c4e0', '#6baed6', '#3182bd', '#08519c', '#082694',
+                      '#f2e65c', '#ffc400', '#ff8700']
 
 def ins(lst, v):
     return sorted(set(lst + [v]))
@@ -151,6 +157,12 @@ def build():
         out['snowfall']['units'][unit] = {'breakpoints': bps, 'data_unit': 'cm',
             'data_breakpoints': [-1e9] + [round(conv(v), 4) for v in bps],
             'colors': ['#000000'] + SNOW_COLORS, 'alpha': [0.0] + [1.0]*len(bps)}
+    out['snowfall_hourly'] = {'label': 'Snowfall (past hour)', 'variable': 'snowfall',
+                              'default_unit': 'in', 'units': {}}
+    for unit, bps, conv in (('in', SNOW_HOURLY_IN, TO_DATA['in_snow']), ('cm', SNOW_HOURLY_CM, TO_DATA['cm'])):
+        out['snowfall_hourly']['units'][unit] = {'breakpoints': bps, 'data_unit': 'cm',
+            'data_breakpoints': [-1e9] + [round(conv(v), 4) for v in bps],
+            'colors': ['#000000'] + SNOW_HOURLY_COLORS, 'alpha': [0.0] + [1.0]*len(bps)}
     return out
 
 if __name__ == '__main__':

@@ -298,19 +298,20 @@ export const PRODUCTS = {
       },
     ],
   },
-  snowTotal: {
-    id: 'snowTotal',
-    label: 'Snowfall total',
-    shortLabel: 'Snow total',
+  // Hourly for now: a running total needs summing every hour since the run
+  // started in the app (see the Week 4 page). Totals come later.
+  snowfall: {
+    id: 'snowfall',
+    label: 'Snowfall (past hour)',
+    shortLabel: 'Snowfall',
     group: 'Winter',
     level: 'surface',
-    period: 'total',
-    needsSum: true,
+    period: 'past hour',
     layers: [
       {
         kind: 'shaded',
         variable: 'snowfall',
-        scale: 'snowfallTotal',
+        scale: 'snowfallHourly',
         quantity: 'snow',
       },
     ],

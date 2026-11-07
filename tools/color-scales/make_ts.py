@@ -9,7 +9,7 @@ OUT = HERE.parent.parent / 'src' / 'data' / 'colorScaleData.ts'
 KEYS = {'surface_temperature': 'surfaceTemperature', 'temperature_925': 'temperature925',
         'temperature_850': 'temperature850', 'wind_500': 'wind500', 'wind_250': 'wind250',
         'cape': 'cape', 'precipitation': 'precipitation',
-        'precipitable_water': 'precipitableWater', 'snowfall': 'snowfallTotal'}
+        'precipitable_water': 'precipitableWater', 'snowfall': 'snowfallTotal', 'snowfall_hourly': 'snowfallHourly'}
 
 S = json.load(open(HERE / 'scales.json', encoding='utf-8'))
 lines = [

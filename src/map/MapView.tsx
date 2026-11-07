@@ -65,6 +65,7 @@ function readParams() {
     units,
     theme,
     hour: hour ? Number(hour) : undefined,
+    debug: q.has('debug'),
   }
 }
 
@@ -138,6 +139,9 @@ export function MapView() {
       touchPitch: false,
     })
     map.touchZoomRotate.disableRotation()
+    // ?debug exposes the map in the browser console (window.__map) for checks.
+    if (params.debug)
+      (window as unknown as { __map: maplibregl.Map }).__map = map
 
     // "style.load" fires as soon as the basemap style is read, before its
     // tiles arrive, so the weather download starts in parallel with them.

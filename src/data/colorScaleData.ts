@@ -23,6 +23,7 @@ export type ScaleKey =
   | 'precipitation'
   | 'precipitableWater'
   | 'snowfallTotal'
+  | 'snowfallHourly'
 
 export const SCALES: Record<
   ScaleKey,
@@ -567,6 +568,36 @@ export const SCALES: Record<
         '#9e0000',
         '#690000',
         '#8a3fd1',
+      ],
+      hideBelow: true,
+    },
+  },
+  snowfallHourly: {
+    in: {
+      breakpoints: [0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3],
+      colors: [
+        '#a3c4e0',
+        '#6baed6',
+        '#3182bd',
+        '#08519c',
+        '#082694',
+        '#f2e65c',
+        '#ffc400',
+        '#ff8700',
+      ],
+      hideBelow: true,
+    },
+    cm: {
+      breakpoints: [0.25, 0.5, 1, 2, 3, 4, 5, 7.5],
+      colors: [
+        '#a3c4e0',
+        '#6baed6',
+        '#3182bd',
+        '#08519c',
+        '#082694',
+        '#f2e65c',
+        '#ffc400',
+        '#ff8700',
       ],
       hideBelow: true,
     },

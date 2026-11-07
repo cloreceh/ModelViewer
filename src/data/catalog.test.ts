@@ -82,8 +82,8 @@ describe('availability', () => {
     expect(isAvailable('reflectivity', 'ecmwf')).toBe(false)
   })
 
-  it('keeps snowfall totals off until summing is built', () => {
-    for (const m of models) expect(isAvailable('snowTotal', m)).toBe(false)
+  it('shows hourly snowfall on every model', () => {
+    for (const m of models) expect(isAvailable('snowfall', m)).toBe(true)
   })
 
   it('checks the run variable lists, including derived variables', () => {
@@ -161,7 +161,7 @@ describe('color scales', () => {
 
 describe('first hour', () => {
   it('starts products made only of totals at F01, others at F00', () => {
-    expect(firstHourIndex('snowTotal')).toBe(1)
+    expect(firstHourIndex('snowfall')).toBe(1)
     expect(firstHourIndex('slpPrecip')).toBe(0) // SLP alone at F00
     expect(firstHourIndex('temp2m')).toBe(0)
     expect(firstHourIndex('reflectivity')).toBe(0)

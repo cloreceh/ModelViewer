@@ -167,7 +167,9 @@ function sourceSpecs(ctx: ProductContext, validTime: Date): SourceSpec[] {
           'text-font': LABEL_FONT,
           'text-size': 11,
           'text-keep-upright': true,
-          'text-max-angle': 30,
+          // Contours traced from a model grid zigzag at small scale; a strict
+          // angle limit (MapLibre's default is 45°) stops every label.
+          'text-max-angle': 180,
         },
         // A halo in the map's color breaks the line around the number.
         paint: {
