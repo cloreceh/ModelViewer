@@ -10,6 +10,7 @@ import { nationOutline, stateLines } from './boundaries'
 import {
   SPIKE_LAYERS,
   addSpikeLayer,
+  firstHourIndex,
   pickSpikeLayer,
   updateSpikeLayer,
 } from './spikeLayers'
@@ -72,14 +73,11 @@ export function MapView() {
     const iemRequest =
       layer === 'hrrr-refl' ? fetchIemRun() : Promise.resolve(undefined)
 
-    // Precipitation is empty at F00 (no rain has added up yet), so the
-    // reflectivity check starts one hour in. ?hour=N picks another start.
+    // Layers with totals like precipitation start one hour in (there's
+    // nothing at F00 yet). ?hour=N picks another start.
+    const firstIndex = firstHourIndex(layer)
     const hourParam = new URLSearchParams(window.location.search).get('hour')
-    let hourIndex = hourParam
-      ? Number(hourParam)
-      : layer === 'hrrr-refl'
-        ? 1
-        : 0
+    let hourIndex = hourParam ? Number(hourParam) : firstIndex
 
     // Create the map once, when the component first appears.
     const map = new maplibregl.Map({
@@ -130,7 +128,7 @@ export function MapView() {
         .then(([run, iemRun]) => {
           if (removed) return
           hourIndex = Math.min(
-            Math.max(hourIndex, 0),
+            Math.max(hourIndex, firstIndex),
             run.validTimes.length - 1,
           )
           addSpikeLayer(
@@ -153,11 +151,17 @@ export function MapView() {
           // Step buttons: move one forecast hour and time how long it takes.
           stepRef.current = (delta) => {
             const next = hourIndex + delta
-            if (next < 0 || next >= run.validTimes.length) return
+            if (next < firstIndex || next >= run.validTimes.length) return
             hourIndex = next
             const started = performance.now()
             updateSpikeLayer(map, layer, run, run.validTimes[next], iemRun)
-            setStatus((s) => ({ ...s, hourIndex: next, stepLoad: undefined }))
+            // A new hour starts with a clean slate: clear any earlier error.
+            setStatus((s) => ({
+              ...s,
+              hourIndex: next,
+              stepLoad: undefined,
+              error: undefined,
+            }))
             map.once('idle', () => {
               if (!removed) {
                 setStatus((s) => ({

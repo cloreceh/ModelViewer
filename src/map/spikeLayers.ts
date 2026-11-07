@@ -4,6 +4,7 @@ import type {
   RasterTileSource,
   VectorTileSource,
 } from 'maplibre-gl'
+import { variableIsAccumulated } from '@openmeteo/weather-map-layer'
 import { omFileUrl, type Dataset } from '../data/openmeteo/mapSources'
 import type { RunInfo } from '../data/openmeteo/runs'
 import { reflectivityTiles, type IemRun } from '../data/iem/reflectivity'
@@ -14,12 +15,25 @@ export const SPIKE_LAYERS = {
   'hrrr-t2m': { label: 'HRRR 2 m temperature', dataset: 'ncep_hrrr_conus' },
   'gfs-500': { label: 'GFS 500 mb heights and wind', dataset: 'ncep_gfs025' },
   'hrrr-refl': {
-    label: 'HRRR reflectivity (IEM) over precipitation (Open-Meteo)',
+    label: 'HRRR simulated reflectivity (IEM)',
     dataset: 'ncep_hrrr_conus',
   },
 } as const satisfies Record<string, { label: string; dataset: Dataset }>
 
 export type SpikeLayer = keyof typeof SPIKE_LAYERS
+
+// Open-Meteo fields each test layer reads.
+const SPIKE_VARIABLES: Record<SpikeLayer, string[]> = {
+  'hrrr-t2m': ['temperature_2m'],
+  'gfs-500': ['wind_speed_500hPa', 'geopotential_height_500hPa'],
+  'hrrr-refl': [], // IEM tiles only, no Open-Meteo fields
+}
+
+// Totals like precipitation don't exist in a run's first file (nothing has
+// added up yet), so layers that use them start at the run's second hour.
+export function firstHourIndex(layer: SpikeLayer): number {
+  return SPIKE_VARIABLES[layer].some((v) => variableIsAccumulated(v)) ? 1 : 0
+}
 
 export function pickSpikeLayer(): SpikeLayer {
   const value = new URLSearchParams(window.location.search).get('layer')
@@ -71,21 +85,20 @@ function sourceSpecs(
     ]
   }
 
-  // hrrr-refl: Open-Meteo precipitation underneath, IEM reflectivity on top,
-  // so you can see whether the two line up in time.
-  const specs = [shaded('precipitation', 0.6)]
-  if (!iemRun) return specs
+  // hrrr-refl: IEM reflectivity tiles only.
+  if (!iemRun) return []
   const tiles = reflectivityTiles(iemRun, validTime)
-  specs.push({
-    id: 'reflectivity',
-    type: 'raster',
-    // Past F18 (or before the run) IEM has no tile: keep the source pointed
-    // at the run's first frame and hide the layer instead.
-    tiles: [tiles ?? reflectivityTiles(iemRun, iemRun.runTime)!],
-    hidden: !tiles,
-    layer: { type: 'raster', paint: { 'raster-opacity': 0.8 } },
-  })
-  return specs
+  return [
+    {
+      id: 'reflectivity',
+      type: 'raster',
+      // Past F18 (or before the run) IEM has no tile: keep the source pointed
+      // at the run's first frame and hide the layer instead.
+      tiles: [tiles ?? reflectivityTiles(iemRun, iemRun.runTime)!],
+      hidden: !tiles,
+      layer: { type: 'raster', paint: { 'raster-opacity': 0.8 } },
+    },
+  ]
 }
 
 // Adds the layers underneath `beforeId`, so borders and city names stay on top.
