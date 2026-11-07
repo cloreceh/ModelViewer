@@ -4,32 +4,72 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // MapLibre draws map data in a background worker. Point it at the worker
 // file explicitly so Vite includes it in both dev and production builds.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import { omProtocol } from '@openmeteo/weather-map-layer'
 import { BASEMAP_STYLES, CONUS_BOUNDS } from './basemap'
 import { nationOutline, stateLines } from './boundaries'
+import { registerOmProtocol } from './omProtocol'
 import {
-  SPIKE_LAYERS,
-  addSpikeLayer,
+  addProductLayers,
   firstHourIndex,
-  pickSpikeLayer,
-  updateSpikeLayer,
-} from './spikeLayers'
+  updateProductLayers,
+  type ProductContext,
+  type Theme,
+} from './productLayers'
+import {
+  DEFAULT_PRODUCT,
+  MODELS,
+  isAvailable,
+  isModelId,
+  isProductId,
+  product,
+  productDatasets,
+  productVariables,
+  datasetFor,
+  type ModelId,
+  type ProductId,
+} from '../data/catalog'
 import {
   fetchLatestRun,
   forecastHour,
   type RunInfo,
 } from '../data/openmeteo/runs'
+import type { Dataset } from '../data/openmeteo/mapSources'
+import { fetchIemRun, type IemRun } from '../data/iem/reflectivity'
 import {
-  IEM_LAST_MINUTE,
-  fetchIemRun,
-  iemMinute,
-  type IemRun,
-} from '../data/iem/reflectivity'
+  UNIT_PRESETS,
+  displayUnit,
+  type UnitPreset,
+  type UnitSettings,
+} from '../lib/units'
 
 maplibregl.setWorkerUrl(workerUrl)
-// Teach MapLibre to read om:// addresses (Open-Meteo weather files).
-// Registered once, before any map is created.
-maplibregl.addProtocol('om', omProtocol)
+
+// Until the pickers and settings exist (Week 9), the address picks what to
+// show: ?model=gfs&product=heights500&units=metric&theme=dark&hour=6
+function readParams() {
+  const q = new URLSearchParams(window.location.search)
+  const model: ModelId = isModelId(q.get('model'))
+    ? (q.get('model') as ModelId)
+    : 'hrrr'
+  const asked = q.get('product')
+  const wanted: ProductId = isProductId(asked) ? asked : DEFAULT_PRODUCT
+  // Products a model can't show fall back to the default (SLP and precip).
+  const productId = isAvailable(wanted, model) ? wanted : DEFAULT_PRODUCT
+  const preset = (q.get('units') ?? 'default') as UnitPreset
+  const units: UnitSettings = UNIT_PRESETS[preset] ?? UNIT_PRESETS.default
+  const theme: Theme = q.get('theme') === 'dark' ? 'dark' : 'light'
+  const hour = q.get('hour')
+  return {
+    model,
+    productId,
+    fellBack: productId !== wanted ? wanted : undefined,
+    units,
+    theme,
+    hour: hour ? Number(hour) : undefined,
+  }
+}
+
+const params = readParams()
+registerOmProtocol(params.units)
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -41,25 +81,28 @@ const localTime = (time: Date) =>
     timeZoneName: 'short',
   })
 
-// What the spike notes line shows (temporary, removed after the spikes).
-interface SpikeStatus {
+// What the temporary notes line shows (removed once the run label exists).
+interface Status {
   run?: RunInfo
-  iemRun?: IemRun
   hourIndex: number
   firstFrame?: number
   stepLoad?: number
   error?: string
 }
 
+// The dataset whose run sets the forecast hours (the product's first layer;
+// reflectivity follows HRRR's surface run).
+function mainDataset(model: ModelId, productId: ProductId): Dataset {
+  const first = productVariables(productId)[0]
+  return first ? datasetFor(model, first) : MODELS[model].surfaceDataset
+}
+
 export function MapView() {
-  // A reference to the <div> the map draws into.
   const containerRef = useRef<HTMLDivElement>(null)
   // Lets the step buttons reach the map and its layers.
   const stepRef = useRef<(delta: number) => void>(() => {})
-  const [status, setStatus] = useState<SpikeStatus>({ hourIndex: 0 })
-
-  const layer = pickSpikeLayer()
-  const { label, dataset } = SPIKE_LAYERS[layer]
+  const [status, setStatus] = useState<Status>({ hourIndex: 0 })
+  const { model, productId, units, theme } = params
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -69,20 +112,24 @@ export function MapView() {
 
     // Start the run lookups right away, at the same time as the basemap
     // loads, instead of waiting for the map to be ready.
-    const runRequest = fetchLatestRun(dataset)
-    const iemRequest =
-      layer === 'hrrr-refl' ? fetchIemRun() : Promise.resolve(undefined)
+    const datasets = productDatasets(productId, model)
+    const main = mainDataset(model, productId)
+    if (!datasets.includes(main)) datasets.push(main)
+    const runRequests = Promise.all(datasets.map((d) => fetchLatestRun(d)))
+    const usesIem = product(productId).layers.some(
+      (l) => l.kind === 'iem-reflectivity',
+    )
+    const iemRequest: Promise<IemRun | undefined> = usesIem
+      ? fetchIemRun()
+      : Promise.resolve(undefined)
 
-    // Layers with totals like precipitation start one hour in (there's
-    // nothing at F00 yet). ?hour=N picks another start.
-    const firstIndex = firstHourIndex(layer)
-    const hourParam = new URLSearchParams(window.location.search).get('hour')
-    let hourIndex = hourParam ? Number(hourParam) : firstIndex
+    const firstIndex = firstHourIndex(productId)
+    let hourIndex = params.hour ?? firstIndex
 
     // Create the map once, when the component first appears.
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: BASEMAP_STYLES.light,
+      style: BASEMAP_STYLES[theme],
       bounds: CONUS_BOUNDS,
       fitBoundsOptions: { padding: 16 },
       // Keep the map flat and north-up, like other model viewers.
@@ -100,6 +147,8 @@ export function MapView() {
       const firstLabelId = map
         .getStyle()
         .layers.find((l) => l.type === 'symbol')?.id
+      const border =
+        theme === 'dark' ? ['#9aa5b1', '#b5bec8'] : ['#5f6b78', '#4a5561']
 
       // State and national borders, below the labels
       map.addSource('state-lines', { type: 'geojson', data: stateLines })
@@ -109,7 +158,7 @@ export function MapView() {
           id: 'state-lines',
           type: 'line',
           source: 'state-lines',
-          paint: { 'line-color': '#5f6b78', 'line-width': 0.8 },
+          paint: { 'line-color': border[0], 'line-width': 0.8 },
         },
         firstLabelId,
       )
@@ -118,30 +167,39 @@ export function MapView() {
           id: 'nation-outline',
           type: 'line',
           source: 'nation-outline',
-          paint: { 'line-color': '#4a5561', 'line-width': 1.2 },
+          paint: { 'line-color': border[1], 'line-width': 1.2 },
         },
         firstLabelId,
       )
 
       // Weather data, underneath the borders.
-      Promise.all([runRequest, iemRequest])
-        .then(([run, iemRun]) => {
+      Promise.all([runRequests, iemRequest])
+        .then(([runList, iemRun]) => {
           if (removed) return
-          hourIndex = Math.min(
-            Math.max(hourIndex, firstIndex),
-            run.validTimes.length - 1,
-          )
-          addSpikeLayer(
-            map,
-            layer,
-            run,
-            run.validTimes[hourIndex],
-            'state-lines',
+          const runs = Object.fromEntries(
+            runList.map((r) => [r.dataset, r]),
+          ) as ProductContext['runs']
+          const run = runs[main]!
+          // Reflectivity stops at F18 (IEM tiles end there).
+          const maxHour = product(productId).maxForecastHour
+          const lastIndex =
+            maxHour === undefined
+              ? run.validTimes.length - 1
+              : run.validTimes.filter((t) => forecastHour(run, t) <= maxHour)
+                  .length - 1
+          hourIndex = Math.min(Math.max(hourIndex, firstIndex), lastIndex)
+          const ctx: ProductContext = {
+            model,
+            product: productId,
+            runs,
             iemRun,
-          )
-          setStatus((s) => ({ ...s, run, iemRun, hourIndex }))
+            units,
+            theme,
+          }
+          addProductLayers(map, ctx, run.validTimes[hourIndex], 'state-lines')
+          setStatus((s) => ({ ...s, run, hourIndex }))
 
-          // Spike note: time from page load until the weather first draws.
+          // Time from page load until the weather first draws.
           map.once('idle', () => {
             if (!removed) {
               setStatus((s) => ({ ...s, firstFrame: performance.now() }))
@@ -151,10 +209,10 @@ export function MapView() {
           // Step buttons: move one forecast hour and time how long it takes.
           stepRef.current = (delta) => {
             const next = hourIndex + delta
-            if (next < firstIndex || next >= run.validTimes.length) return
+            if (next < firstIndex || next > lastIndex) return
             hourIndex = next
             const started = performance.now()
-            updateSpikeLayer(map, layer, run, run.validTimes[next], iemRun)
+            updateProductLayers(map, ctx, run.validTimes[next])
             // A new hour starts with a clean slate: clear any earlier error.
             setStatus((s) => ({
               ...s,
@@ -182,13 +240,13 @@ export function MapView() {
       removed = true
       map.remove()
     }
-  }, [layer, dataset])
+  }, [model, productId, units, theme])
 
   return (
     <>
       <div ref={containerRef} className="map" />
       <div className="spike-info">
-        <SpikeNotes label={label} status={status} />
+        <Notes status={status} />
         <div className="spike-steps">
           <button type="button" onClick={() => stepRef.current(-1)}>
             ◀ Hour
@@ -202,34 +260,39 @@ export function MapView() {
   )
 }
 
-function SpikeNotes({ label, status }: { label: string; status: SpikeStatus }) {
-  const { run, iemRun, hourIndex, firstFrame, stepLoad, error } = status
-  if (error) return <div>Error: {error}</div>
-  if (!run) return <div>Loading…</div>
-
-  const validTime = run.validTimes[hourIndex]
+// Temporary notes line: what's on screen, the run and the timings.
+function Notes({ status }: { status: Status }) {
+  const { run, hourIndex, firstFrame, stepLoad, error } = status
+  const { model, productId, units, fellBack } = params
+  const p = product(productId)
+  const shaded = p.layers.find((l) => l.kind === 'shaded')
+  const unit = shaded ? displayUnit(shaded.quantity, p.level, units) : 'dBZ'
   const lines = [
-    label,
-    `Open-Meteo ${runName(run.referenceTime)} F${pad(forecastHour(run, validTime))} · valid ${localTime(validTime)}`,
+    `${MODELS[model].label} · ${p.label} · ${unit}${p.period ? ` · ${p.period}` : ''}`,
   ]
-  if (iemRun) {
-    const minute = iemMinute(iemRun, validTime)
-    const iemHour =
-      minute >= 0 && minute <= IEM_LAST_MINUTE
-        ? `F${pad(minute / 60)}`
-        : 'no tile (past F18)'
-    const sameRun =
-      iemRun.runTime.getTime() === run.referenceTime.getTime()
-        ? 'same run'
-        : 'different run'
-    lines.push(`IEM ${runName(iemRun.runTime)} ${iemHour} · ${sameRun}`)
+  if (fellBack) {
+    const why = product(fellBack).needsSum
+      ? 'not built yet'
+      : `not in ${MODELS[model].label}`
+    lines.push(`${product(fellBack).label} is ${why}; showing ${p.label}`)
   }
-  const timing = [
-    firstFrame ? `first frame ${seconds(firstFrame)}` : 'loading…',
-    stepLoad ? `last step ${seconds(stepLoad)}` : null,
-    `isolated: ${window.crossOriginIsolated ? 'yes' : 'no'}`,
-  ]
-  lines.push(timing.filter(Boolean).join(' · '))
+  if (error) lines.push(`Error: ${error}`)
+  else if (!run) lines.push('Loading…')
+  else {
+    const validTime = run.validTimes[hourIndex]
+    lines.push(
+      `${runName(run.referenceTime)} F${pad(forecastHour(run, validTime))} · valid ${localTime(validTime)}`,
+    )
+    lines.push(
+      [
+        firstFrame ? `first frame ${seconds(firstFrame)}` : 'loading…',
+        stepLoad ? `last step ${seconds(stepLoad)}` : null,
+        `isolated: ${window.crossOriginIsolated ? 'yes' : 'no'}`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    )
+  }
   return (
     <>
       {lines.map((line) => (
