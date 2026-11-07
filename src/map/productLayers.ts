@@ -7,6 +7,7 @@ import type {
 } from 'maplibre-gl'
 import { variableIsAccumulated } from '@openmeteo/weather-map-layer'
 import {
+  dataScale,
   datasetFor,
   product,
   productVariables,
@@ -68,8 +69,16 @@ function fallbackTime(run: RunInfo, variable: string): Date {
 }
 
 // Label text: heights in decameters ("564"), pressure as is ("1008").
-function labelText(layer: ContourLayer): ExpressionSpecification {
-  const value: ExpressionSpecification = ['to-number', ['get', 'value']]
+// `scale` undoes a dataset's own units (ECMWF pressure in Pa).
+function labelText(
+  layer: ContourLayer,
+  scale: number,
+): ExpressionSpecification {
+  const value: ExpressionSpecification = [
+    '/',
+    ['to-number', ['get', 'value']],
+    scale,
+  ]
   return layer.quantity === 'height'
     ? ['to-string', ['round', ['/', value, 10]]]
     : ['to-string', ['round', value]]
@@ -141,6 +150,7 @@ function sourceSpecs(ctx: ProductContext, validTime: Date): SourceSpec[] {
     }
 
     // Contours, with the value printed in the line
+    const scale = dataScale(run.dataset, layer.variable)
     const color = layer.quantity === 'pressure' ? ink.slp : ink.contour
     const width =
       layer.style === 'freezing'
@@ -163,7 +173,7 @@ function sourceSpecs(ctx: ProductContext, validTime: Date): SourceSpec[] {
         layout: {
           'symbol-placement': 'line',
           'symbol-spacing': 250,
-          'text-field': labelText(layer),
+          'text-field': labelText(layer, scale),
           'text-font': LABEL_FONT,
           'text-size': 11,
           'text-keep-upright': true,
@@ -184,7 +194,7 @@ function sourceSpecs(ctx: ProductContext, validTime: Date): SourceSpec[] {
       type: 'vector',
       url: omFileUrl(run, time, layer.variable, {
         contours: 'true',
-        intervals: layer.intervals.join(','),
+        intervals: layer.intervals.map((v) => v * scale).join(','),
       }),
       hidden: !ok,
       layers: lines,

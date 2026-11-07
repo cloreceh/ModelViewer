@@ -59,6 +59,18 @@ export const MODELS: Record<ModelId, ModelDef> = {
   },
 }
 
+// Variables a dataset stores in other units than the rest. Found on the
+// phone check (Week 4, Task 8): ECMWF's 9 km dataset has sea-level pressure
+// in Pa, where HRRR and GFS use hPa.
+const DATA_SCALE: Partial<Record<Dataset, Record<string, number>>> = {
+  ecmwf_ifs: { pressure_msl: 100 },
+}
+
+// How many of the dataset's units make one of the usual data unit (1 = same).
+export function dataScale(dataset: Dataset, variable: string): number {
+  return DATA_SCALE[dataset]?.[variable] ?? 1
+}
+
 const PRESSURE_LEVEL = /_\d+hPa$/
 
 // Which of a model's datasets holds a variable.

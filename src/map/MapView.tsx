@@ -45,6 +45,7 @@ maplibregl.setWorkerUrl(workerUrl)
 
 // Until the pickers and settings exist (Week 9), the address picks what to
 // show: ?model=gfs&product=heights500&units=metric&theme=dark&hour=6
+// (hour is the forecast hour; the nearest one at or after it is shown)
 function readParams() {
   const q = new URLSearchParams(window.location.search)
   const model: ModelId = isModelId(q.get('model'))
@@ -125,7 +126,7 @@ export function MapView() {
       : Promise.resolve(undefined)
 
     const firstIndex = firstHourIndex(productId)
-    let hourIndex = params.hour ?? firstIndex
+    let hourIndex = firstIndex
 
     // Create the map once, when the component first appears.
     const map = new maplibregl.Map({
@@ -191,6 +192,13 @@ export function MapView() {
               ? run.validTimes.length - 1
               : run.validTimes.filter((t) => forecastHour(run, t) <= maxHour)
                   .length - 1
+          if (params.hour !== undefined) {
+            const wanted = params.hour
+            const i = run.validTimes.findIndex(
+              (t) => forecastHour(run, t) >= wanted,
+            )
+            if (i >= 0) hourIndex = i
+          }
           hourIndex = Math.min(Math.max(hourIndex, firstIndex), lastIndex)
           const ctx: ProductContext = {
             model,

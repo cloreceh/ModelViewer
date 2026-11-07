@@ -3,6 +3,7 @@ import {
   DEFAULT_PRODUCT,
   GROUPS,
   PRODUCTS,
+  dataScale,
   datasetFor,
   isAvailable,
   productDatasets,
@@ -32,6 +33,13 @@ describe('datasets', () => {
     expect(datasetFor('ecmwf', 'temperature_2m')).toBe('ecmwf_ifs')
     expect(datasetFor('ecmwf', 'temperature_850hPa')).toBe('ecmwf_ifs025')
     expect(datasetFor('hrrr', 'temperature_850hPa')).toBe('ncep_hrrr_conus')
+  })
+
+  it('knows ECMWF 9 km stores sea-level pressure in Pa', () => {
+    expect(dataScale('ecmwf_ifs', 'pressure_msl')).toBe(100)
+    expect(dataScale('ncep_gfs025', 'pressure_msl')).toBe(1)
+    expect(dataScale('ncep_hrrr_conus', 'pressure_msl')).toBe(1)
+    expect(dataScale('ecmwf_ifs', 'temperature_2m')).toBe(1)
   })
 
   it('uses both GFS datasets for SLP and precipitation', () => {
