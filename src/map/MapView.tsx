@@ -8,11 +8,14 @@ import { omProtocol } from '@openmeteo/weather-map-layer'
 import { BASEMAP_STYLES, CONUS_BOUNDS } from './basemap'
 import { nationOutline, stateLines } from './boundaries'
 import { SPIKE_LAYERS, addSpikeLayer, pickSpikeLayer } from './spikeLayers'
+import { fetchLatestRun, forecastHour } from '../data/openmeteo/runs'
 
 maplibregl.setWorkerUrl(workerUrl)
 // Teach MapLibre to read om:// addresses (Open-Meteo weather files).
 // Registered once, before any map is created.
 maplibregl.addProtocol('om', omProtocol)
+
+const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
 
 export function MapView() {
   // A reference to the <div> the map draws into.
@@ -22,6 +25,17 @@ export function MapView() {
 
   useEffect(() => {
     if (!containerRef.current) return
+    let removed = false
+    let errorText = ''
+
+    const layer = pickSpikeLayer()
+    const { label, dataset } = SPIKE_LAYERS[layer]
+
+    // Start looking up the newest run right away, at the same time as the
+    // basemap loads, instead of waiting for the map to be ready.
+    const runRequest = fetchLatestRun(dataset)
+    let runFoundAt = 0
+    runRequest.then(() => (runFoundAt = performance.now())).catch(() => {})
 
     // Create the map once, when the component first appears.
     const map = new maplibregl.Map({
@@ -36,18 +50,16 @@ export function MapView() {
     })
     map.touchZoomRotate.disableRotation()
 
-    map.on('load', () => {
+    // "style.load" fires as soon as the basemap style is read, before its
+    // tiles arrive, so the weather download starts in parallel with them.
+    map.once('style.load', () => {
       // The first label layer in the basemap. Everything we add goes
       // underneath it, so city names stay on top of the weather colors.
       const firstLabelId = map
         .getStyle()
-        .layers.find((layer) => layer.type === 'symbol')?.id
+        .layers.find((l) => l.type === 'symbol')?.id
 
-      // 1. Weather data (bottom)
-      const layer = pickSpikeLayer()
-      addSpikeLayer(map, layer, firstLabelId)
-
-      // 2. State and national borders, above the weather but below labels
+      // State and national borders, below the labels
       map.addSource('state-lines', { type: 'geojson', data: stateLines })
       map.addSource('nation-outline', { type: 'geojson', data: nationOutline })
       map.addLayer(
@@ -69,22 +81,39 @@ export function MapView() {
         firstLabelId,
       )
 
-      // Spike note: time from page load until the map first finishes drawing.
-      map.once('idle', () => {
-        const ms = Math.round(performance.now())
-        const isolated = window.crossOriginIsolated ? 'yes' : 'no'
-        setSpikeInfo(
-          `${SPIKE_LAYERS[layer]} · first frame ${ms} ms · isolated: ${isolated}`,
-        )
-      })
+      // Weather data, underneath the borders. Shows the run's first hour.
+      runRequest
+        .then((run) => {
+          if (removed) return
+          const validTime = run.validTimes[0]
+          addSpikeLayer(map, layer, run, validTime, 'state-lines')
+          const runName = `${String(run.referenceTime.getUTCHours()).padStart(2, '0')}Z F${String(forecastHour(run, validTime)).padStart(2, '0')}`
+
+          // Spike note: time from page load until the weather first draws.
+          map.once('idle', () => {
+            if (removed || errorText) return
+            const isolated = window.crossOriginIsolated ? 'yes' : 'no'
+            setSpikeInfo(
+              `${label} ${runName} · run found ${seconds(runFoundAt)} · first frame ${seconds(performance.now())} · isolated: ${isolated}`,
+            )
+          })
+        })
+        .catch((error: Error) => {
+          errorText = error.message
+          setSpikeInfo(`Error: ${errorText}`)
+        })
     })
 
     map.on('error', (event) => {
-      setSpikeInfo(`Error: ${event.error?.message ?? 'unknown'}`)
+      errorText = event.error?.message ?? 'unknown'
+      setSpikeInfo(`Error: ${errorText}`)
     })
 
     // Clean up the map if the component is removed.
-    return () => map.remove()
+    return () => {
+      removed = true
+      map.remove()
+    }
   }, [])
 
   return (
