@@ -22,3 +22,19 @@ body,
   font: 13px/1.3 system-ui, sans-serif;
   color: #1e1e1e;
 }
+/* Tech spike 2: temporary buttons to step through forecast hours */
+.spike-steps {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.spike-steps button {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid #c4c4c4;
+  border-radius: 8px;
+  background: #f4f4f4;
+  font: 600 15px system-ui, sans-serif;
+  color: #1e1e1e;
+}

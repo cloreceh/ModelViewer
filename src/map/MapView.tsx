@@ -7,8 +7,23 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { omProtocol } from '@openmeteo/weather-map-layer'
 import { BASEMAP_STYLES, CONUS_BOUNDS } from './basemap'
 import { nationOutline, stateLines } from './boundaries'
-import { SPIKE_LAYERS, addSpikeLayer, pickSpikeLayer } from './spikeLayers'
-import { fetchLatestRun, forecastHour } from '../data/openmeteo/runs'
+import {
+  SPIKE_LAYERS,
+  addSpikeLayer,
+  pickSpikeLayer,
+  updateSpikeLayer,
+} from './spikeLayers'
+import {
+  fetchLatestRun,
+  forecastHour,
+  type RunInfo,
+} from '../data/openmeteo/runs'
+import {
+  IEM_LAST_MINUTE,
+  fetchIemRun,
+  iemMinute,
+  type IemRun,
+} from '../data/iem/reflectivity'
 
 maplibregl.setWorkerUrl(workerUrl)
 // Teach MapLibre to read om:// addresses (Open-Meteo weather files).
@@ -16,26 +31,55 @@ maplibregl.setWorkerUrl(workerUrl)
 maplibregl.addProtocol('om', omProtocol)
 
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
+const pad = (n: number) => String(n).padStart(2, '0')
+const runName = (time: Date) => `${pad(time.getUTCHours())}Z`
+const localTime = (time: Date) =>
+  time.toLocaleString(undefined, {
+    weekday: 'short',
+    hour: 'numeric',
+    timeZoneName: 'short',
+  })
+
+// What the spike notes line shows (temporary, removed after the spikes).
+interface SpikeStatus {
+  run?: RunInfo
+  iemRun?: IemRun
+  hourIndex: number
+  firstFrame?: number
+  stepLoad?: number
+  error?: string
+}
 
 export function MapView() {
   // A reference to the <div> the map draws into.
   const containerRef = useRef<HTMLDivElement>(null)
-  // Spike 1 notes shown on screen, so they can be read on a phone.
-  const [spikeInfo, setSpikeInfo] = useState('Loading…')
+  // Lets the step buttons reach the map and its layers.
+  const stepRef = useRef<(delta: number) => void>(() => {})
+  const [status, setStatus] = useState<SpikeStatus>({ hourIndex: 0 })
+
+  const layer = pickSpikeLayer()
+  const { label, dataset } = SPIKE_LAYERS[layer]
 
   useEffect(() => {
     if (!containerRef.current) return
     let removed = false
-    let errorText = ''
+    const fail = (error: { message: string }) =>
+      !removed && setStatus((s) => ({ ...s, error: error.message }))
 
-    const layer = pickSpikeLayer()
-    const { label, dataset } = SPIKE_LAYERS[layer]
-
-    // Start looking up the newest run right away, at the same time as the
-    // basemap loads, instead of waiting for the map to be ready.
+    // Start the run lookups right away, at the same time as the basemap
+    // loads, instead of waiting for the map to be ready.
     const runRequest = fetchLatestRun(dataset)
-    let runFoundAt = 0
-    runRequest.then(() => (runFoundAt = performance.now())).catch(() => {})
+    const iemRequest =
+      layer === 'hrrr-refl' ? fetchIemRun() : Promise.resolve(undefined)
+
+    // Precipitation is empty at F00 (no rain has added up yet), so the
+    // reflectivity check starts one hour in. ?hour=N picks another start.
+    const hourParam = new URLSearchParams(window.location.search).get('hour')
+    let hourIndex = hourParam
+      ? Number(hourParam)
+      : layer === 'hrrr-refl'
+        ? 1
+        : 0
 
     // Create the map once, when the component first appears.
     const map = new maplibregl.Map({
@@ -81,45 +125,112 @@ export function MapView() {
         firstLabelId,
       )
 
-      // Weather data, underneath the borders. Shows the run's first hour.
-      runRequest
-        .then((run) => {
+      // Weather data, underneath the borders.
+      Promise.all([runRequest, iemRequest])
+        .then(([run, iemRun]) => {
           if (removed) return
-          const validTime = run.validTimes[0]
-          addSpikeLayer(map, layer, run, validTime, 'state-lines')
-          const runName = `${String(run.referenceTime.getUTCHours()).padStart(2, '0')}Z F${String(forecastHour(run, validTime)).padStart(2, '0')}`
+          hourIndex = Math.min(
+            Math.max(hourIndex, 0),
+            run.validTimes.length - 1,
+          )
+          addSpikeLayer(
+            map,
+            layer,
+            run,
+            run.validTimes[hourIndex],
+            'state-lines',
+            iemRun,
+          )
+          setStatus((s) => ({ ...s, run, iemRun, hourIndex }))
 
           // Spike note: time from page load until the weather first draws.
           map.once('idle', () => {
-            if (removed || errorText) return
-            const isolated = window.crossOriginIsolated ? 'yes' : 'no'
-            setSpikeInfo(
-              `${label} ${runName} · run found ${seconds(runFoundAt)} · first frame ${seconds(performance.now())} · isolated: ${isolated}`,
-            )
+            if (!removed) {
+              setStatus((s) => ({ ...s, firstFrame: performance.now() }))
+            }
           })
+
+          // Step buttons: move one forecast hour and time how long it takes.
+          stepRef.current = (delta) => {
+            const next = hourIndex + delta
+            if (next < 0 || next >= run.validTimes.length) return
+            hourIndex = next
+            const started = performance.now()
+            updateSpikeLayer(map, layer, run, run.validTimes[next], iemRun)
+            setStatus((s) => ({ ...s, hourIndex: next, stepLoad: undefined }))
+            map.once('idle', () => {
+              if (!removed) {
+                setStatus((s) => ({
+                  ...s,
+                  stepLoad: performance.now() - started,
+                }))
+              }
+            })
+          }
         })
-        .catch((error: Error) => {
-          errorText = error.message
-          setSpikeInfo(`Error: ${errorText}`)
-        })
+        .catch(fail)
     })
 
-    map.on('error', (event) => {
-      errorText = event.error?.message ?? 'unknown'
-      setSpikeInfo(`Error: ${errorText}`)
-    })
+    map.on('error', (event) => fail(event.error ?? new Error('unknown')))
 
     // Clean up the map if the component is removed.
     return () => {
       removed = true
       map.remove()
     }
-  }, [])
+  }, [layer, dataset])
 
   return (
     <>
       <div ref={containerRef} className="map" />
-      <div className="spike-info">{spikeInfo}</div>
+      <div className="spike-info">
+        <SpikeNotes label={label} status={status} />
+        <div className="spike-steps">
+          <button type="button" onClick={() => stepRef.current(-1)}>
+            ◀ Hour
+          </button>
+          <button type="button" onClick={() => stepRef.current(1)}>
+            Hour ▶
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function SpikeNotes({ label, status }: { label: string; status: SpikeStatus }) {
+  const { run, iemRun, hourIndex, firstFrame, stepLoad, error } = status
+  if (error) return <div>Error: {error}</div>
+  if (!run) return <div>Loading…</div>
+
+  const validTime = run.validTimes[hourIndex]
+  const lines = [
+    label,
+    `Open-Meteo ${runName(run.referenceTime)} F${pad(forecastHour(run, validTime))} · valid ${localTime(validTime)}`,
+  ]
+  if (iemRun) {
+    const minute = iemMinute(iemRun, validTime)
+    const iemHour =
+      minute >= 0 && minute <= IEM_LAST_MINUTE
+        ? `F${pad(minute / 60)}`
+        : 'no tile (past F18)'
+    const sameRun =
+      iemRun.runTime.getTime() === run.referenceTime.getTime()
+        ? 'same run'
+        : 'different run'
+    lines.push(`IEM ${runName(iemRun.runTime)} ${iemHour} · ${sameRun}`)
+  }
+  const timing = [
+    firstFrame ? `first frame ${seconds(firstFrame)}` : 'loading…',
+    stepLoad ? `last step ${seconds(stepLoad)}` : null,
+    `isolated: ${window.crossOriginIsolated ? 'yes' : 'no'}`,
+  ]
+  lines.push(timing.filter(Boolean).join(' · '))
+  return (
+    <>
+      {lines.map((line) => (
+        <div key={line}>{line}</div>
+      ))}
     </>
   )
 }
