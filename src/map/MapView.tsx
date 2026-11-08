@@ -4,7 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // MapLibre draws map data in a background worker. Point it at the worker
 // file explicitly so Vite includes it in both dev and production builds.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import { BASEMAP_STYLES, CONUS_BOUNDS } from './basemap'
+import { BASEMAP_STYLES, CONUS_BOUNDS, tuneBasemap } from './basemap'
 import { nationOutline, stateLines } from './boundaries'
 import { registerOmProtocol } from './omProtocol'
 import {
@@ -147,6 +147,9 @@ export function MapView() {
     // "style.load" fires as soon as the basemap style is read, before its
     // tiles arrive, so the weather download starts in parallel with them.
     map.once('style.load', () => {
+      // Lighter roads and fewer labels, so the weather colors lead.
+      tuneBasemap(map, theme)
+
       // The first label layer in the basemap. Everything we add goes
       // underneath it, so city names stay on top of the weather colors.
       const firstLabelId = map
