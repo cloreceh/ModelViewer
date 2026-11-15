@@ -4,7 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // MapLibre draws map data in a background worker. Point it at the worker
 // file explicitly so Vite includes it in both dev and production builds.
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import { BASEMAP_STYLES, CONUS_BOUNDS, tuneBasemap } from './basemap'
+import { BASEMAP_STYLES, OPENING_VIEW, tuneBasemap } from './basemap'
 import { nationOutline, stateLines } from './boundaries'
 import { registerOmProtocol } from './omProtocol'
 import {
@@ -92,6 +92,14 @@ interface Status {
   error?: string
 }
 
+// Page title that follows the view (Week 7 accessibility specs), read out
+// when the app opens: "GFS 06Z SLP and precip · Model Viewer"
+const APP_NAME = 'Model Viewer'
+function pageTitle(model: ModelId, productId: ProductId, run: RunInfo) {
+  const what = product(productId).shortLabel.replace(' & ', ' and ')
+  return `${MODELS[model].label} ${runName(run.referenceTime)} ${what} · ${APP_NAME}`
+}
+
 // The dataset whose run sets the forecast hours (the product's first layer;
 // reflectivity follows HRRR's surface run).
 function mainDataset(model: ModelId, productId: ProductId): Dataset {
@@ -132,14 +140,17 @@ export function MapView() {
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: BASEMAP_STYLES[theme],
-      bounds: CONUS_BOUNDS,
-      fitBoundsOptions: { padding: 16 },
+      center: OPENING_VIEW.center,
+      zoom: OPENING_VIEW.zoom,
       // Keep the map flat and north-up, like other model viewers.
       dragRotate: false,
       pitchWithRotate: false,
       touchPitch: false,
     })
     map.touchZoomRotate.disableRotation()
+    // Padding moves the map's center into the space between the top buttons
+    // and the bottom panel, and stays for later moves (search, zoom buttons).
+    map.setPadding(OPENING_VIEW.padding)
     // ?debug exposes the map in the browser console (window.__map) for checks.
     if (params.debug)
       (window as unknown as { __map: maplibregl.Map }).__map = map
@@ -213,6 +224,7 @@ export function MapView() {
           }
           addProductLayers(map, ctx, run.validTimes[hourIndex], 'state-lines')
           setStatus((s) => ({ ...s, run, hourIndex }))
+          document.title = pageTitle(model, productId, run)
 
           // Time from page load until the weather first draws.
           map.once('idle', () => {

@@ -7,10 +7,14 @@ export const BASEMAP_STYLES = {
   dark: 'https://tiles.openfreemap.org/styles/dark',
 } as const
 
-// Starting view: the lower 48 states [west, south, east, north].
-export const CONUS_BOUNDS: [number, number, number, number] = [
-  -125, 24, -66.5, 49.5,
-]
+// Opening view (Week 6): the central US at zoom 2.6. The padding keeps the
+// US between the buttons at the top (96 px) and the bottom panel (262 px),
+// measured on a 390 x 844 phone screen.
+export const OPENING_VIEW = {
+  center: [-97, 38] as [number, number],
+  zoom: 2.6,
+  padding: { top: 96, bottom: 262, left: 0, right: 0 },
+}
 
 // The parts of a MapLibre map that tuneBasemap uses (kept small so the
 // tests can pass in a stand-in).
