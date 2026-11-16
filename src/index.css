@@ -21,7 +21,9 @@ html {
   background: var(--ui-map-land);
 }
 
-.map {
+/* MapLibre's own stylesheet makes the map position: relative, which would
+   collapse it to zero height here; the extra class wins over it. */
+.map.maplibregl-map {
   position: absolute;
   inset: 0;
 }
