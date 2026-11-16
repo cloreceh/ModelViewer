@@ -5,36 +5,870 @@ body,
   height: 100%;
 }
 
+/* Anything outside the app (a phone's rounded corners or home indicator
+   area) matches the bottom panel. */
+html {
+  background: var(--ui-surface);
+}
+
+/* ---------- Map screen (02) ---------- */
+/* Positions are from Figma's Map base on a 390 × 844 screen. */
+
+.map-screen {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--ui-map-land);
+}
+
 .map {
-  width: 100%;
-  height: 100%;
-}
-
-/* Tech spike 1: on-screen notes (removed after the spike) */
-.spike-info {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: calc(8px + env(safe-area-inset-bottom));
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-  font: 13px/1.3 system-ui, sans-serif;
-  color: #1e1e1e;
-}
-/* Tech spike 2: temporary buttons to step through forecast hours */
-.spike-steps {
-  display: flex;
-  gap: 8px;
-  margin-top: 6px;
+  inset: 0;
 }
 
-.spike-steps button {
-  flex: 1;
+/* Round 44 px map buttons: surface, 1 px border edge, soft shadow (Week 6) */
+.map-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-float);
+  color: var(--ui-text);
+}
+.map-button:active {
+  background: var(--ui-surface-raised);
+}
+.map-button[aria-disabled='true'] {
+  color: var(--ui-text-disabled);
+}
+
+/* Search and settings: 9 px below the status bar, 15 px from the right */
+.top-buttons {
+  position: absolute;
+  z-index: 2;
+  top: calc(env(safe-area-inset-top) + 9px);
+  right: 15px;
+  display: flex;
+  gap: 14px;
+}
+
+/* Everything along the bottom: the map buttons above the legend, the
+   floating legend, and the bottom panel. */
+.bottom-stack {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.map-controls-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 15px 0 10px;
+  pointer-events: none;
+}
+.map-controls-row > * {
+  pointer-events: auto;
+}
+
+/* Zoom in over zoom out, 16 px above the legend */
+.zoom-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+/* Map credits: a 28 px (i) in a 44 px tap area, 7 px above the legend */
+.credits-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 7px;
+}
+.credits-button-face {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-float);
+  color: var(--ui-text-secondary);
+}
+.credits-button:active .credits-button-face {
+  background: var(--ui-surface-raised);
+}
+
+/* ---------- Floating legend (Week 5) ---------- */
+
+.legend {
+  position: relative;
+  z-index: 1;
+  margin-bottom: -4px; /* sits right on the panel's top edge */
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-card);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-legend);
+}
+
+.legend-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  text-align: left;
+  border-radius: var(--ui-radius-card);
+}
+
+.legend-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding-right: 24px; /* room for the chevron */
+  color: var(--ui-text);
+}
+
+.legend-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ui-text-secondary);
+}
+.legend-note-icon {
+  color: var(--ui-text);
+}
+
+.legend-line {
+  display: inline-block;
+  width: 16px;
+  height: 2px;
+  background: var(--ui-text);
+}
+.legend-line-freezing {
+  height: 2px;
+}
+
+.legend-bar {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: 3px;
+}
+.legend-band {
+  flex: 1 1 0;
+  height: 11px;
+}
+
+.legend-labels {
+  position: relative;
+  display: block;
+  height: 1.2em;
+  color: var(--ui-text);
+  white-space: nowrap;
+}
+.legend-labels > span {
+  position: absolute;
+  top: 0;
+}
+.legend-bold {
+  font-weight: 700;
+}
+
+/* The chevron opens the legend sheet; its tap area is 44 px and reaches
+   a little above the card. */
+.legend-sheet-button {
+  position: absolute;
+  top: -10px;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding-left: 8px;
+  color: var(--ui-text-secondary);
+}
+
+/* ---------- Bottom panel (Week 5, layout C) ---------- */
+
+.bottom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+}
+
+.panel-menus {
+  display: flex;
+  flex-wrap: wrap; /* at large text sizes the product menu drops below */
+  gap: 0 12px;
+  align-items: flex-start;
+}
+
+/* Run label and product: text menus in the accent color (Week 5) */
+.run-label,
+.product-menu {
   min-height: 44px;
-  border: 1px solid #c4c4c4;
+  box-sizing: border-box;
+  padding: 4px 0;
+  color: var(--ui-accent);
+  text-align: left;
   border-radius: 8px;
-  background: #f4f4f4;
-  font: 600 15px system-ui, sans-serif;
-  color: #1e1e1e;
+}
+.run-label:active,
+.product-menu:active {
+  background: var(--ui-surface-raised);
+}
+
+.run-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 0 1 auto;
+  /* 161 px at the default text size; at large text sizes the two menus
+     share the row and wrap (Week 7) */
+  min-width: min(10.0625rem, calc(50% - 6px));
+}
+.run-line {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+}
+.run-valid {
+  color: var(--ui-text-secondary);
+}
+
+.product-menu {
+  display: flex;
+  align-self: stretch;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: 8rem;
+  padding-top: 5px;
+  padding-bottom: 0;
+  align-items: flex-start;
+}
+
+/* Step buttons: side by side across the panel, labeled with the step */
+.step-buttons {
+  display: flex;
+  gap: 12px;
+}
+.step-button {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  box-sizing: border-box;
+  border-radius: 22px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+}
+.step-button:active {
+  background: var(--ui-border);
+}
+.step-button[aria-disabled='true'] {
+  color: var(--ui-text-disabled);
+}
+.step-button[aria-disabled='true']:active {
+  background: var(--ui-surface-raised);
+}
+
+/* ---------- Forecast-hour slider (Weeks 5 to 7) ---------- */
+
+.slider {
+  position: relative;
+}
+
+.slider-row {
+  position: relative;
+  height: 44px;
+  touch-action: none; /* the slider, not the page, gets the drag */
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.slider-track,
+.slider-fill {
+  position: absolute;
+  top: 13px;
+  height: 4px;
+  border-radius: 3px;
+}
+.slider-track {
+  left: 0;
+  right: 0;
+  background: var(--ui-text-disabled);
+}
+.slider-fill {
+  left: 0;
+  background: var(--ui-accent);
+}
+
+.slider-thumb {
+  position: absolute;
+  z-index: 2;
+  top: 3px;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--ui-accent);
+  background: var(--ui-surface);
+}
+.slider-row.dragging .slider-thumb {
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--ui-accent) 20%, transparent);
+}
+
+/* Day ticks (1 × 5 px) and 6-hour ticks (1 × 3 px), Week 7 */
+.slider-tick {
+  position: absolute;
+  top: 19px;
+  width: 1px;
+}
+.slider-tick-day {
+  height: 5px;
+  background: var(--ui-text-secondary);
+}
+.slider-tick-sixHour {
+  height: 3px;
+  background: var(--ui-text-disabled);
+}
+
+.slider-labels {
+  position: absolute;
+  top: 30px;
+  height: 1.2em;
+  left: 0;
+  right: 0;
+  color: var(--ui-text-secondary);
+  white-space: nowrap;
+}
+.slider-label {
+  position: absolute;
+  top: 0;
+}
+.slider-label-middle {
+  transform: translateX(-50%);
+}
+.slider-label-end {
+  transform: translateX(-100%);
+}
+
+/* Hours a product can't show: light dashed outline over the track */
+.slider-greyed {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  border: 1px dashed var(--ui-text-disabled);
+  border-radius: 5px;
+  background: var(--ui-surface);
+  pointer-events: none;
+}
+.slider-greyed-note {
+  position: absolute;
+  bottom: calc(100% - 10px);
+  transform: translateX(-50%);
+  color: var(--ui-text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Popup above the thumb while dragging (Week 6, S7) */
+.slider-popup {
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 108px;
+  box-sizing: border-box;
+  padding: 9px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--ui-edge-toast);
+  background: var(--ui-toast);
+  color: var(--ui-on-toast);
+  box-shadow: var(--ui-shadow-float);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.slider-popup-pointer {
+  position: absolute;
+  top: 100%;
+  width: 14px;
+  height: 8px;
+  transform: translateX(-50%);
+  background: var(--ui-toast);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* ---------- Error card (S6; finished with the Week 11 states) ---------- */
+
+.error-card {
+  position: absolute;
+  z-index: 3;
+  top: calc(env(safe-area-inset-top) + 64px);
+  left: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--ui-radius-card);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-float);
+  color: var(--ui-text-secondary);
+}
+.error-card .t-body-strong {
+  color: var(--ui-error);
+}
+
+/* While a sheet is open the map layer is inert; it fills the screen. */
+.map-layer {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---------- Toast (Weeks 3 to 7): above the legend, 16 px from the left */
+
+.toast-region {
+  position: absolute;
+  left: 16px;
+  right: 74px; /* clear of the zoom buttons */
+  bottom: calc(100% + 13px);
+  z-index: 3;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 300px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 0 0 14px;
+  border-radius: var(--ui-radius-card);
+  border: 1px solid var(--ui-edge-toast);
+  background: var(--ui-toast);
+  color: var(--ui-on-toast);
+  box-shadow: var(--ui-shadow-float);
+  pointer-events: auto;
+  animation: fade-in 150ms ease-out;
+}
+.toast-message {
+  flex: 1;
+  padding: 12px 0;
+}
+.toast:not(:has(.toast-action)) .toast-message {
+  padding-right: 14px;
+}
+/* The action's tap area is the toast's full height (Week 7). */
+.toast-action {
+  align-self: stretch;
+  padding: 0 14px;
+  color: var(--ui-toast-action);
+  border-radius: 0 var(--ui-radius-card) var(--ui-radius-card) 0;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- Sheets (Weeks 3 to 7) ---------- */
+
+.sheet-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--ui-scrim);
+  animation: fade-in 200ms ease-out;
+}
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100% - 96px);
+  box-sizing: border-box;
+  padding: 0 16px max(16px, env(safe-area-inset-bottom));
+  border-radius: 20px 20px 0 0;
+  background: var(--ui-surface);
+  box-shadow: 0 -2px 12px rgb(0 0 0 / 16%);
+  transition: transform 150ms ease-out;
+  animation: sheet-in 220ms ease-out;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+/* Reduced motion: a quick fade instead of a slide (Week 7). The global
+   rule in theme.css shortens animations; this swaps the slide out. */
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation-name: fade-in;
+  }
+}
+
+.sheet-header {
+  flex: none;
+  touch-action: none; /* pulling the header down closes the sheet */
+}
+
+/* The handle: a 36 × 5 bar, inside a 44 px "Close" button (Week 7) */
+.sheet-handle {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 25px;
+  padding-top: 10px;
+  margin-bottom: 2px;
+  position: relative;
+}
+.sheet-handle::after {
+  content: '';
+  position: absolute;
+  inset: -4px 0 -15px; /* 44 px tall tap area */
+}
+.sheet-handle > span {
+  width: 36px;
+  height: 5px;
+  border-radius: 2.5px;
+  background: var(--ui-border);
+}
+
+.sheet-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sheet-title {
+  margin: 0;
+  color: var(--ui-text);
+}
+.sheet-title:focus {
+  outline: none;
+}
+.sheet-title:focus-visible {
+  outline: 2px solid var(--ui-accent);
+}
+.sheet-aside {
+  color: var(--ui-text-secondary);
+}
+.sheet-subtitle {
+  margin: 4px 0 0;
+  color: var(--ui-text-secondary);
+}
+
+.sheet-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-top: 12px;
+  margin: 0 -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+.sheet-hint {
+  margin: 12px 0 0;
+  color: var(--ui-text-secondary);
+}
+
+.row-check {
+  flex: none;
+  color: var(--ui-accent);
+}
+
+/* Model switch rows (03) */
+.model-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.model-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border-radius: var(--ui-radius-card);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  text-align: left;
+  color: var(--ui-text);
+}
+.model-row:active {
+  background: var(--ui-surface-raised);
+}
+.model-row.selected {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-subtle);
+}
+.model-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.model-row-detail {
+  color: var(--ui-text-secondary);
+}
+
+/* Product picker (04) */
+.sheet-section {
+  margin: 0 0 10px;
+  color: var(--ui-text-secondary);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
+}
+.chip:active {
+  background: var(--ui-border);
+}
+.chip.selected {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+  color: var(--ui-on-accent);
+}
+.sheet-divider {
+  margin: 10px 0 0;
+  border: 0;
+  border-top: 1px solid var(--ui-border);
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 37px;
+  box-sizing: border-box;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--ui-text);
+  text-align: left;
+}
+.accordion-header svg {
+  color: var(--ui-text-secondary);
+}
+.product-rows {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 0 16px;
+}
+.product-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 7px 6px 7px 10px;
+  border-radius: 8px;
+  color: var(--ui-text);
+  text-align: left;
+}
+.product-row > span:first-child {
+  flex: 1;
+}
+.product-row:active {
+  background: var(--ui-surface-raised);
+}
+.product-row.selected {
+  background: var(--ui-accent-subtle);
+}
+.product-row[aria-disabled='true'] {
+  color: var(--ui-text-disabled);
+  cursor: default;
+}
+.product-row[aria-disabled='true']:active {
+  background: none;
+}
+.product-row-note {
+  color: var(--ui-text-disabled);
+}
+
+/* Legend sheet (08) */
+.legend-sheet-bands {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
+}
+.legend-sheet-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.legend-sheet-band {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ui-text);
+}
+.legend-sheet-swatch {
+  flex: none;
+  width: 30px;
+  height: 16px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%);
+}
+.legend-sheet-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  color: var(--ui-text-secondary);
+}
+.legend-sheet-note-icon {
+  flex: none;
+  width: 16px;
+  height: 2px;
+  background: var(--ui-accent);
+}
+
+/* Map credits (09) */
+.credit-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.credit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--ui-border);
+}
+.credit-row:last-child {
+  border-bottom: 0;
+}
+.credit-links {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 8px;
+}
+.credit-row a {
+  color: var(--ui-accent);
+  text-decoration: none;
+}
+.credit-what {
+  color: var(--ui-text-secondary);
+}
+
+/* ---------- Model menu (01) ---------- */
+
+[data-screen='menu'],
+[data-screen='menu'] body {
+  background: var(--ui-background);
+}
+.model-menu {
+  min-height: 100%;
+  box-sizing: border-box;
+  padding: calc(env(safe-area-inset-top) + 10px) 16px 24px;
+  background: var(--ui-background);
+  color: var(--ui-text);
+}
+.model-menu h1 {
+  margin: 0 4px;
+}
+.model-menu h1:focus {
+  outline: none;
+}
+.model-menu-sub {
+  margin: 5px 4px 20px;
+  color: var(--ui-text-secondary);
+}
+.model-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.model-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface);
+  text-align: left;
+  color: var(--ui-text);
+}
+.model-card:active {
+  background: var(--ui-surface-raised);
+}
+.model-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.model-card-detail {
+  color: var(--ui-text-secondary);
+}
+.status-chip {
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-accent-subtle);
+}
+.status-chip-coming {
+  border-color: var(--ui-text);
+  background: var(--ui-surface);
 }

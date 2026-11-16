@@ -13,11 +13,13 @@
   },
   "dependencies": {
     "@openmeteo/weather-map-layer": "0.3.2",
+    "lucide-react": "^1.73.0",
     "maplibre-gl": "^6.16.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "topojson-client": "^3.1.0",
-    "us-atlas": "^3.0.1"
+    "us-atlas": "^3.0.1",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

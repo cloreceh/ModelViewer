@@ -1,0 +1,168 @@
+/* UI colors (Week 5 tokens, approved Nov 7). Names match the Figma "UI"
+   variables (var(--ui-…)); the theme is picked by data-theme on <html>.
+   The kb-… keyboard colors are mockup-only and stay out of the CSS. */
+:root,
+[data-theme='light'] {
+  --ui-surface: #ffffff;
+  --ui-surface-raised: #f4f4f2;
+  --ui-border: #d4d4d0;
+  --ui-text: #1a1a1a;
+  --ui-text-secondary: #5a5a57;
+  --ui-text-disabled: #8a8a86;
+  --ui-accent: #1d5fc4;
+  --ui-on-accent: #ffffff;
+  --ui-error: #c0362c;
+  --ui-warning: #8a5a00;
+  --ui-scrim: rgb(0 0 0 / 40%);
+  --ui-toast: #2a2a2d;
+  --ui-on-toast: #f2f2f2;
+  --ui-toast-action: #7cb0ff;
+  --ui-background: #f4f4f2;
+  --ui-accent-subtle: #e8f0fc;
+  --ui-map-land: #f2f3f0;
+  color-scheme: light;
+}
+
+[data-theme='dark'] {
+  --ui-surface: #1c1c1e;
+  --ui-surface-raised: #2a2a2d;
+  --ui-border: #3e3e42;
+  --ui-text: #f2f2f2;
+  --ui-text-secondary: #b4b4b8;
+  --ui-text-disabled: #7c7c82;
+  --ui-accent: #7cb0ff;
+  --ui-on-accent: #0c1a33;
+  --ui-error: #ff8a80;
+  --ui-warning: #f2c14e;
+  --ui-scrim: rgb(0 0 0 / 60%);
+  --ui-toast: #2a2a2d;
+  --ui-on-toast: #f2f2f2;
+  --ui-toast-action: #7cb0ff;
+  --ui-background: #0e0e0f;
+  --ui-accent-subtle: #1e2c44;
+  --ui-map-land: #0c0c0c;
+  color-scheme: dark;
+}
+
+/* Shape and shadow (Week 5) */
+:root {
+  --ui-radius-card: 12px;
+  --ui-shadow-float: 0 2px 8px rgb(0 0 0 / 16%);
+  --ui-shadow-legend: 0 2px 4px rgb(0 0 0 / 16%);
+  --ui-edge-toast: rgb(255 255 255 / 12%);
+}
+
+/* Type scale (Week 6, matches the Figma "UI/…" text styles). Sizes are in
+   rem so they follow the browser's text size (Week 7). System font, with
+   tabular numbers wherever times, hours and values show. */
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color: var(--ui-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.t-title {
+  font-size: 1.625rem;
+  font-weight: 700;
+}
+.t-heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.t-headline {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+.t-body-strong {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.t-body {
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+.t-callout-strong {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.t-callout {
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+.t-caption-strong {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.t-caption {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.t-legend {
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+.t-title,
+.t-heading,
+.t-headline,
+.t-body-strong,
+.t-body,
+.t-callout-strong,
+.t-callout,
+.t-caption-strong,
+.t-caption,
+.t-legend {
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Focus ring (Week 5, Task 5): 2 px accent with a 2 px gap and a 2 px
+   surface halo outside it, so it shows over any weather color. Keyboards
+   and switch control only (:focus-visible), not taps. */
+:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px var(--ui-surface);
+}
+
+/* Buttons start plain; each control styles its own. */
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Headings and titles that take focus when a screen or sheet opens show
+   no ring: focus lands there so screen readers start at the title. */
+[tabindex='-1']:focus {
+  outline: none;
+  box-shadow: none;
+}

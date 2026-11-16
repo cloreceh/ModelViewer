@@ -6,170 +6,96 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { BASEMAP_STYLES, OPENING_VIEW, tuneBasemap } from './basemap'
 import { nationOutline, stateLines } from './boundaries'
-import { registerOmProtocol } from './omProtocol'
+import { applyUnits, registerOmProtocol } from './omProtocol'
 import {
   addProductLayers,
-  firstHourIndex,
+  removeProductLayers,
   updateProductLayers,
   type ProductContext,
   type Theme,
 } from './productLayers'
-import {
-  DEFAULT_PRODUCT,
-  MODELS,
-  isAvailable,
-  isModelId,
-  isProductId,
-  product,
-  productDatasets,
-  productVariables,
-  datasetFor,
-  type ModelId,
-  type ProductId,
-} from '../data/catalog'
-import {
-  fetchLatestRun,
-  forecastHour,
-  type RunInfo,
-} from '../data/openmeteo/runs'
-import type { Dataset } from '../data/openmeteo/mapSources'
-import { fetchIemRun, type IemRun } from '../data/iem/reflectivity'
-import {
-  UNIT_PRESETS,
-  displayUnit,
-  type UnitPreset,
-  type UnitSettings,
-} from '../lib/units'
+import type { ProductRuns } from '../data/useProductRuns'
+import type { UnitSettings } from '../lib/units'
 
 maplibregl.setWorkerUrl(workerUrl)
+registerOmProtocol()
 
-// Until the pickers and settings exist (Week 9), the address picks what to
-// show: ?model=gfs&product=heights500&units=metric&theme=dark&hour=6
-// (hour is the forecast hour; the nearest one at or after it is shown)
-function readParams() {
-  const q = new URLSearchParams(window.location.search)
-  const model: ModelId = isModelId(q.get('model'))
-    ? (q.get('model') as ModelId)
-    : 'hrrr'
-  const asked = q.get('product')
-  const wanted: ProductId = isProductId(asked) ? asked : DEFAULT_PRODUCT
-  // Products a model can't show fall back to the default (SLP and precip).
-  const productId = isAvailable(wanted, model) ? wanted : DEFAULT_PRODUCT
-  const preset = (q.get('units') ?? 'default') as UnitPreset
-  const units: UnitSettings = UNIT_PRESETS[preset] ?? UNIT_PRESETS.default
-  const theme: Theme = q.get('theme') === 'dark' ? 'dark' : 'light'
-  const hour = q.get('hour')
-  return {
-    model,
-    productId,
-    fellBack: productId !== wanted ? wanted : undefined,
-    units,
-    theme,
-    hour: hour ? Number(hour) : undefined,
-    debug: q.has('debug'),
-  }
+interface Props {
+  theme: Theme
+  units: UnitSettings
+  runs?: ProductRuns // undefined while a new model or product loads
+  frameTime?: Date // the valid time to draw
+  padding: { top: number; bottom: number }
+  label: string // what screen readers hear for the map region
+  onMap: (map: maplibregl.Map | null) => void
+  onError: (message: string) => void
 }
 
-const params = readParams()
-registerOmProtocol(params.units)
+const debug = new URLSearchParams(window.location.search).has('debug')
 
-const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
-const pad = (n: number) => String(n).padStart(2, '0')
-const runName = (time: Date) => `${pad(time.getUTCHours())}Z`
-const localTime = (time: Date) =>
-  time.toLocaleString(undefined, {
-    weekday: 'short',
-    hour: 'numeric',
-    timeZoneName: 'short',
+// The map itself. It's made once per theme (the basemap style changes with
+// it); model, product, units and hour changes swap or repoint the weather
+// layers on the same map, so the view stays where it is.
+export function MapView({
+  theme,
+  units,
+  runs,
+  frameTime,
+  padding,
+  label,
+  onMap,
+  onError,
+}: Props) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<maplibregl.Map | null>(null)
+  // The weather now on the map, and the hour it shows.
+  const shownRef = useRef<{ ctx: ProductContext; time: number } | null>(null)
+  // The map view, kept when the theme changes and the map is rebuilt.
+  const viewRef = useRef({
+    center: OPENING_VIEW.center as maplibregl.LngLatLike,
+    zoom: OPENING_VIEW.zoom,
+  })
+  const [styleReady, setStyleReady] = useState<maplibregl.Map | null>(null)
+  const onMapRef = useRef(onMap)
+  const onErrorRef = useRef(onError)
+  useEffect(() => {
+    onMapRef.current = onMap
+    onErrorRef.current = onError
   })
 
-// What the temporary notes line shows (removed once the run label exists).
-interface Status {
-  run?: RunInfo
-  hourIndex: number
-  firstFrame?: number
-  stepLoad?: number
-  error?: string
-}
-
-// Page title that follows the view (Week 7 accessibility specs), read out
-// when the app opens: "GFS 06Z SLP and precip · Model Viewer"
-const APP_NAME = 'Model Viewer'
-function pageTitle(model: ModelId, productId: ProductId, run: RunInfo) {
-  const what = product(productId).shortLabel.replace(' & ', ' and ')
-  return `${MODELS[model].label} ${runName(run.referenceTime)} ${what} · ${APP_NAME}`
-}
-
-// The dataset whose run sets the forecast hours (the product's first layer;
-// reflectivity follows HRRR's surface run).
-function mainDataset(model: ModelId, productId: ProductId): Dataset {
-  const first = productVariables(productId)[0]
-  return first ? datasetFor(model, first) : MODELS[model].surfaceDataset
-}
-
-export function MapView() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  // Lets the step buttons reach the map and its layers.
-  const stepRef = useRef<(delta: number) => void>(() => {})
-  const [status, setStatus] = useState<Status>({ hourIndex: 0 })
-  const { model, productId, units, theme } = params
-
+  // Create the map (again when the theme changes).
   useEffect(() => {
     if (!containerRef.current) return
-    let removed = false
-    const fail = (error: { message: string }) =>
-      !removed && setStatus((s) => ({ ...s, error: error.message }))
-
-    // Start the run lookups right away, at the same time as the basemap
-    // loads, instead of waiting for the map to be ready.
-    const datasets = productDatasets(productId, model)
-    const main = mainDataset(model, productId)
-    if (!datasets.includes(main)) datasets.push(main)
-    const runRequests = Promise.all(datasets.map((d) => fetchLatestRun(d)))
-    const usesIem = product(productId).layers.some(
-      (l) => l.kind === 'iem-reflectivity',
-    )
-    const iemRequest: Promise<IemRun | undefined> = usesIem
-      ? fetchIemRun()
-      : Promise.resolve(undefined)
-
-    const firstIndex = firstHourIndex(productId)
-    let hourIndex = firstIndex
-
-    // Create the map once, when the component first appears.
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: BASEMAP_STYLES[theme],
-      center: OPENING_VIEW.center,
-      zoom: OPENING_VIEW.zoom,
+      center: viewRef.current.center,
+      zoom: viewRef.current.zoom,
       // Keep the map flat and north-up, like other model viewers.
       dragRotate: false,
       pitchWithRotate: false,
       touchPitch: false,
+      // Credits are in the map credits sheet instead (Week 6).
+      attributionControl: false,
     })
     map.touchZoomRotate.disableRotation()
-    // Padding moves the map's center into the space between the top buttons
-    // and the bottom panel, and stays for later moves (search, zoom buttons).
-    map.setPadding(OPENING_VIEW.padding)
+    mapRef.current = map
+    shownRef.current = null
     // ?debug exposes the map in the browser console (window.__map) for checks.
-    if (params.debug)
-      (window as unknown as { __map: maplibregl.Map }).__map = map
+    if (debug) (window as unknown as { __map: maplibregl.Map }).__map = map
 
     // "style.load" fires as soon as the basemap style is read, before its
     // tiles arrive, so the weather download starts in parallel with them.
     map.once('style.load', () => {
       // Lighter roads and fewer labels, so the weather colors lead.
       tuneBasemap(map, theme)
-
-      // The first label layer in the basemap. Everything we add goes
-      // underneath it, so city names stay on top of the weather colors.
+      // Everything the app adds goes under the first label layer, so city
+      // names stay on top of the weather colors.
       const firstLabelId = map
         .getStyle()
         .layers.find((l) => l.type === 'symbol')?.id
       const border =
         theme === 'dark' ? ['#9aa5b1', '#b5bec8'] : ['#5f6b78', '#4a5561']
-
-      // State and national borders, below the labels
       map.addSource('state-lines', { type: 'geojson', data: stateLines })
       map.addSource('nation-outline', { type: 'geojson', data: nationOutline })
       map.addLayer(
@@ -190,141 +116,65 @@ export function MapView() {
         },
         firstLabelId,
       )
-
-      // Weather data, underneath the borders.
-      Promise.all([runRequests, iemRequest])
-        .then(([runList, iemRun]) => {
-          if (removed) return
-          const runs = Object.fromEntries(
-            runList.map((r) => [r.dataset, r]),
-          ) as ProductContext['runs']
-          const run = runs[main]!
-          // Reflectivity stops at F18 (IEM tiles end there).
-          const maxHour = product(productId).maxForecastHour
-          const lastIndex =
-            maxHour === undefined
-              ? run.validTimes.length - 1
-              : run.validTimes.filter((t) => forecastHour(run, t) <= maxHour)
-                  .length - 1
-          if (params.hour !== undefined) {
-            const wanted = params.hour
-            const i = run.validTimes.findIndex(
-              (t) => forecastHour(run, t) >= wanted,
-            )
-            if (i >= 0) hourIndex = i
-          }
-          hourIndex = Math.min(Math.max(hourIndex, firstIndex), lastIndex)
-          const ctx: ProductContext = {
-            model,
-            product: productId,
-            runs,
-            iemRun,
-            units,
-            theme,
-          }
-          addProductLayers(map, ctx, run.validTimes[hourIndex], 'state-lines')
-          setStatus((s) => ({ ...s, run, hourIndex }))
-          document.title = pageTitle(model, productId, run)
-
-          // Time from page load until the weather first draws.
-          map.once('idle', () => {
-            if (!removed) {
-              setStatus((s) => ({ ...s, firstFrame: performance.now() }))
-            }
-          })
-
-          // Step buttons: move one forecast hour and time how long it takes.
-          stepRef.current = (delta) => {
-            const next = hourIndex + delta
-            if (next < firstIndex || next > lastIndex) return
-            hourIndex = next
-            const started = performance.now()
-            updateProductLayers(map, ctx, run.validTimes[next])
-            // A new hour starts with a clean slate: clear any earlier error.
-            setStatus((s) => ({
-              ...s,
-              hourIndex: next,
-              stepLoad: undefined,
-              error: undefined,
-            }))
-            map.once('idle', () => {
-              if (!removed) {
-                setStatus((s) => ({
-                  ...s,
-                  stepLoad: performance.now() - started,
-                }))
-              }
-            })
-          }
-        })
-        .catch(fail)
+      setStyleReady(map)
     })
+    map.on('moveend', () => {
+      viewRef.current = { center: map.getCenter(), zoom: map.getZoom() }
+    })
+    map.on('error', (event) =>
+      onErrorRef.current(event.error?.message ?? 'Unknown map error'),
+    )
+    onMapRef.current(map)
 
-    map.on('error', (event) => fail(event.error ?? new Error('unknown')))
-
-    // Clean up the map if the component is removed.
     return () => {
-      removed = true
+      onMapRef.current(null)
+      mapRef.current = null
       map.remove()
     }
-  }, [model, productId, units, theme])
+  }, [theme])
+
+  // Keep the US between the top buttons and the bottom panel. The padding
+  // stays on the map, so later moves (search, zoom buttons) keep it too.
+  useEffect(() => {
+    mapRef.current?.setPadding({ ...padding, left: 0, right: 0 })
+  }, [padding, theme])
+
+  // Draw the weather: re-add the layers when the model, product or units
+  // change; just point them at a new file when only the hour changes.
+  useEffect(() => {
+    const map = styleReady
+    if (!map || map !== mapRef.current || !runs || !frameTime) return
+    const shown = shownRef.current
+    const time = frameTime.getTime()
+    const ctx: ProductContext = {
+      model: runs.model,
+      product: runs.productId,
+      runs: runs.runs,
+      iemRun: runs.iemRun,
+      units,
+      theme,
+    }
+    const same =
+      shown &&
+      shown.ctx.model === ctx.model &&
+      shown.ctx.product === ctx.product &&
+      shown.ctx.runs === ctx.runs &&
+      shown.ctx.units === ctx.units
+    try {
+      if (same) {
+        if (shown.time !== time) updateProductLayers(map, ctx, frameTime)
+      } else {
+        if (shown) removeProductLayers(map, shown.ctx)
+        if (shown?.ctx.units !== units) applyUnits(units)
+        addProductLayers(map, ctx, frameTime, 'state-lines')
+      }
+      shownRef.current = { ctx, time }
+    } catch (error) {
+      onErrorRef.current((error as Error).message)
+    }
+  }, [styleReady, runs, frameTime, units, theme])
 
   return (
-    <>
-      <div ref={containerRef} className="map" />
-      <div className="spike-info">
-        <Notes status={status} />
-        <div className="spike-steps">
-          <button type="button" onClick={() => stepRef.current(-1)}>
-            ◀ Hour
-          </button>
-          <button type="button" onClick={() => stepRef.current(1)}>
-            Hour ▶
-          </button>
-        </div>
-      </div>
-    </>
-  )
-}
-
-// Temporary notes line: what's on screen, the run and the timings.
-function Notes({ status }: { status: Status }) {
-  const { run, hourIndex, firstFrame, stepLoad, error } = status
-  const { model, productId, units, fellBack } = params
-  const p = product(productId)
-  const shaded = p.layers.find((l) => l.kind === 'shaded')
-  const unit = shaded ? displayUnit(shaded.quantity, p.level, units) : 'dBZ'
-  const lines = [
-    `${MODELS[model].label} · ${p.label} · ${unit}${p.period ? ` · ${p.period}` : ''}`,
-  ]
-  if (fellBack) {
-    const why = product(fellBack).needsSum
-      ? 'not built yet'
-      : `not in ${MODELS[model].label}`
-    lines.push(`${product(fellBack).label} is ${why}; showing ${p.label}`)
-  }
-  if (error) lines.push(`Error: ${error}`)
-  else if (!run) lines.push('Loading…')
-  else {
-    const validTime = run.validTimes[hourIndex]
-    lines.push(
-      `${runName(run.referenceTime)} F${pad(forecastHour(run, validTime))} · valid ${localTime(validTime)}`,
-    )
-    lines.push(
-      [
-        firstFrame ? `first frame ${seconds(firstFrame)}` : 'loading…',
-        stepLoad ? `last step ${seconds(stepLoad)}` : null,
-        `isolated: ${window.crossOriginIsolated ? 'yes' : 'no'}`,
-      ]
-        .filter(Boolean)
-        .join(' · '),
-    )
-  }
-  return (
-    <>
-      {lines.map((line) => (
-        <div key={line}>{line}</div>
-      ))}
-    </>
+    <div ref={containerRef} className="map" role="region" aria-label={label} />
   )
 }
