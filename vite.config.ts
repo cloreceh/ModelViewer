@@ -54,6 +54,13 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Take over as soon as a new version is installed. registerType
+        // 'autoUpdate' only turns these on when the plugin injects its own
+        // register script; we register in main.tsx (injectRegister: false),
+        // so without them a new version waited until every copy of the app
+        // was closed (found Week 9).
+        skipWaiting: true,
+        clientsClaim: true,
         // Includes MapLibre's worker (.mjs) and the map layer's WebAssembly decoder
         globPatterns: ['**/*.{js,mjs,css,html,wasm,svg,png}'],
         // MapLibre and the decoder are over Workbox's 2 MB default
